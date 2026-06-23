@@ -1,0 +1,168 @@
+#!/usr/bin/env python3
+"""
+Visualización Rich del tablero de alarmas
+"""
+
+import time
+from datetime import datetime
+from rich.console import Console
+from rich.table import Table
+from ui.dashboard_modules.data_manager import get_alarmas_activas, recargar_datos
+
+_console = Console()
+
+def mostrar_tablero_tiempo_real():
+    """Muestra el tablero en tiempo real con colores rich"""
+    import os
+    
+    # Limpiar pantalla al inicio
+    os.system('cls' if os.name == 'nt' else 'clear')
+    
+    try:
+        _console.print("🚨 [bold red]TABLERO DE ALARMAS - VISTA EN TIEMPO REAL[/bold red]")
+        _console.print("Presiona [yellow]Ctrl+C[/yellow] para salir")
+        _console.print("=" * 80, style="dim")
+        
+        contador = 0
+        
+        while True:
+            try:
+                contador += 1
+                
+                # Recargar datos
+                recargar_datos()
+                
+                # Mostrar contenido actualizado
+                _console.clear()
+                _console.print(f"🚨 [bold red]TABLERO DE ALARMAS #{contador:03d}[/bold red]")
+                _console.print(f"[blue]{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}[/blue]")
+                _console.print("=" * 60)
+                
+                # Mostrar alarmas usando Rich
+                mostrar_alarmas_rich()
+                
+                _console.print("\n[yellow]🎮 Presiona Ctrl+C para salir[/yellow]")
+                
+                # Pausa antes de la siguiente actualización
+                time.sleep(3)
+                
+            except KeyboardInterrupt:
+                break
+                
+    except KeyboardInterrupt:
+        pass
+    except Exception as e:
+        _console.print(f"[red]Error en tablero: {e}[/red]")
+        # Fallback a modo simple
+        tablero_simple_fallback()
+    finally:
+        # Limpiar pantalla al salir
+        os.system('cls' if os.name == 'nt' else 'clear')
+        _console.print("👋 [green]Saliendo del tablero de alarmas...[/green]")
+        time.sleep(1)
+
+def mostrar_alarmas_rich():
+    """Muestra alarmas activas usando Rich"""
+    alarmas_filtradas = get_alarmas_activas()
+    
+    if not alarmas_filtradas:
+        _console.print("[green]✅ ESTADO: SIN ALARMAS ACTIVAS[/green]")
+        _console.print("[green]🟢 Todos los equipos funcionando normalmente[/green]")
+        return
+    
+    # Crear tabla
+    table = Table(show_header=True, header_style="bold magenta")
+    table.add_column("🖥️ Equipo", style="cyan")
+    table.add_column("📊 Tipo", style="green")
+    table.add_column("⚠️ Severidad", style="yellow")
+    table.add_column("📈 Info", style="white")
+    
+    for key, alarma in alarmas_filtradas.items():
+        equipo = alarma['equipo']
+        
+        # Tipo y valores
+        if "metrica" in alarma:
+            metrica = alarma['metrica']
+            tipo_display = f"📊 {metrica}"
+            valor = alarma.get('valor', 0)
+            umbral = alarma.get('umbral', 0)
+            unidad = "%" if metrica != "temperatura" else "°C"
+            info_display = f"{valor:.1f}{unidad}/{umbral:.0f}{unidad}"
+        else:
+            tipo_display = "📡 Conexión"
+            info_display = "OFFLINE"
+        
+        # Severidad con colores
+        severidad = alarma["severidad"]
+        if severidad == "critico":
+            sev_display = "[bold red]🔴 CRÍTICO[/bold red]"
+        elif severidad == "warning":
+            sev_display = "[bold yellow]🟡 WARNING[/bold yellow]"
+        else:
+            sev_display = "[bold blue]🔵 INFO[/bold blue]"
+        
+        table.add_row(equipo, tipo_display, sev_display, info_display)
+    
+    _console.print(table)
+    
+    # Mostrar estadísticas
+    total_criticas = len([a for a in alarmas_filtradas.values() 
+                        if a.get("severidad") == "critico"])
+    total_warnings = len([a for a in alarmas_filtradas.values() 
+                        if a.get("severidad") == "warning"])
+    
+    _console.print(f"\n[red]🚨 Total alarmas: {len(alarmas_filtradas)}[/red]")
+    _console.print(f"[red]🔴 Críticas: {total_criticas}[/red] | [yellow]🟡 Warnings: {total_warnings}[/yellow]")
+
+def tablero_simple_fallback():
+    """Tablero simple como fallback"""
+    import os
+    
+    try:
+        while True:
+            os.system('cls' if os.name == 'nt' else 'clear')
+            
+            print("🚨 TABLERO DE ALARMAS - MODO SIMPLE")
+            print(f"🕰️ {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+            print("="*60)
+            
+            recargar_datos()
+            mostrar_alarmas_simple()
+            
+            print("\n🎮 Controles: Ctrl+C = Salir")
+            
+            time.sleep(5)
+            
+    except KeyboardInterrupt:
+        os.system('cls' if os.name == 'nt' else 'clear')
+        print("👋 Saliendo del tablero...")
+        time.sleep(1)
+
+def mostrar_alarmas_simple():
+    """Muestra alarmas en formato simple"""
+    alarmas_filtradas = get_alarmas_activas()
+    
+    if not alarmas_filtradas:
+        print("✅ ESTADO: SIN ALARMAS ACTIVAS")
+        print("🟢 Todos los equipos funcionando normalmente")
+        return
+    
+    print(f"🚨 ALARMAS ACTIVAS: {len(alarmas_filtradas)}")
+    print("-" * 50)
+    
+    for i, (key, alarma) in enumerate(alarmas_filtradas.items(), 1):
+        # Emoji según severidad
+        if alarma["severidad"] == "critico":
+            emoji = "🔴"
+        elif alarma["severidad"] == "warning":
+            emoji = "🟡"
+        else:
+            emoji = "🔵"
+        
+        print(f"{i:2d}. {emoji} {alarma['equipo']} - {alarma.get('metrica', 'conexion').upper()}")
+        if "valor" in alarma:
+            valor = alarma['valor']
+            umbral = alarma['umbral']
+            unidad = "%" if alarma.get('metrica') != "temperatura" else "°C"
+            print(f"     Valor: {valor:.1f}{unidad} / Límite: {umbral:.1f}{unidad}")
+        print()

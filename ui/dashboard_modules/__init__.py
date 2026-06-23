@@ -1,0 +1,1 @@
+# Dashboard module - Tablero de alarmas modularizado
