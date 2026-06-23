@@ -1,0 +1,1 @@
+# Core module - Sistema base de monitoreo distribuido

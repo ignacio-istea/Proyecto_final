@@ -1,0 +1,215 @@
+{
+  "equipos": [
+    {
+      "nombre": "raspberry_pi",
+      "ip": "10.0.0.195",
+      "user": "pinacho",
+      "ssh_key_path": "./keys/private_key.pem",
+      "port": 22,
+      "tipo": "servidor",
+      "ssh_activo": true,
+      "ping_activo": true
+    },
+    {
+      "nombre": "Equipo-Local",
+      "ip": "localhost",
+      "user": "local",
+      "ssh_key_path": "./keys/local.pem",
+      "port": 22,
+      "tipo": "local",
+      "ssh_activo": true,
+      "ping_activo": true
+    },
+    {
+      "nombre": "Router-Principal",
+      "ip": "10.0.0.1",
+      "user": "root",
+      "ssh_key_path": "./keys/id_ed25519",
+      "port": 2022,
+      "tipo": "router",
+      "ssh_activo": true,
+      "ping_activo": true
+    },
+    {
+      "nombre": "Servidor-Web",
+      "ip": "192.168.8.122",
+      "user": "ubuntu",
+      "ssh_key_path": "./keys/server.pem",
+      "port": 22,
+      "tipo": "servidor",
+      "ssh_activo": false,
+      "ping_activo": true
+    },
+    {
+      "nombre": "DNS-Google",
+      "ip": "8.8.8.8",
+      "user": "none",
+      "ssh_key_path": "",
+      "port": 22,
+      "tipo": "externo",
+      "ssh_activo": false,
+      "ping_activo": true
+    },
+    {
+      "nombre": "Switch-Oficina",
+      "ip": "192.168.8.1",
+      "user": "admin",
+      "ssh_key_path": "./keys/switch.pem",
+      "port": 22,
+      "tipo": "switch",
+      "ssh_activo": false,
+      "ping_activo": true
+    },
+    {
+      "nombre": "samsungTV",
+      "ip": "10.0.0.226",
+      "user": "root",
+      "port": 22,
+      "tipo": "workstation",
+      "ssh_key_path": "",
+      "ssh_activo": false,
+      "ping_activo": true
+    },
+    {
+      "nombre": "yamaha",
+      "ip": "10.0.0.212",
+      "user": "root",
+      "port": 22,
+      "tipo": "workstation",
+      "ssh_key_path": "",
+      "ssh_activo": false,
+      "ping_activo": true
+    }
+  ],
+  "monitoreo": {
+    "intervalo_segundos": 30,
+    "temp_limite": 50.0,
+    "cpu_limite": 80.0,
+    "memoria_limite": 85.0,
+    "reintentos": 3
+  },
+  "logging": {
+    "directorio": "./logs",
+    "archivo_principal": "monitor_distribuido.log",
+    "max_bytes": 10485760,
+    "backup_count": 5
+  },
+  "alertas": {
+    "email_activo": false,
+    "notificaciones_desktop": true,
+    "voz_activa": false
+  },
+  "umbrales_por_equipo": {
+    "Equipo-Local": {
+      "cpu": {
+        "clear": 70.0,
+        "warning": 80.0,
+        "critico": 95.0
+      },
+      "memoria": {
+        "clear": 70.0,
+        "warning": 80.0,
+        "critico": 95.0
+      },
+      "temperatura": {
+        "clear": 45.0,
+        "warning": 60.0,
+        "critico": 75.0
+      }
+    },
+    "Router-Principal": {
+      "cpu": {
+        "clear": 60.0,
+        "warning": 75.0,
+        "critico": 90.0
+      },
+      "memoria": {
+        "clear": 70.0,
+        "warning": 85.0,
+        "critico": 95.0
+      },
+      "temperatura": {
+        "clear": 50.0,
+        "warning": 70.0,
+        "critico": 85.0
+      }
+    },
+    "Servidor-Web": {
+      "cpu": {
+        "clear": 65.0,
+        "warning": 80.0,
+        "critico": 95.0
+      },
+      "memoria": {
+        "clear": 75.0,
+        "warning": 85.0,
+        "critico": 95.0
+      },
+      "temperatura": {
+        "clear": 45.0,
+        "warning": 65.0,
+        "critico": 80.0
+      }
+    },
+    "raspberry_pi": {
+      "cpu": {
+        "warning": 56.0,
+        "critico": 80.0,
+        "clear": 48.0
+      },
+      "memoria": {
+        "warning": 59.5,
+        "critico": 85.0,
+        "clear": 51.0
+      },
+      "temperatura": {
+        "warning": 40.0,
+        "critico": 50.0,
+        "clear": 35.0
+      }
+    },
+    "samsungTV": {
+      "cpu": {
+        "warning": 56.0,
+        "critico": 80.0,
+        "clear": 48.0
+      },
+      "memoria": {
+        "warning": 59.5,
+        "critico": 85.0,
+        "clear": 51.0
+      },
+      "temperatura": {
+        "warning": 40.0,
+        "critico": 50.0,
+        "clear": 35.0
+      }
+    },
+    "yamaha": {
+      "cpu": {
+        "warning": 56.0,
+        "critico": 80.0,
+        "clear": 48.0
+      },
+      "memoria": {
+        "warning": 59.5,
+        "critico": 85.0,
+        "clear": 51.0
+      },
+      "temperatura": {
+        "warning": 40.0,
+        "critico": 50.0,
+        "clear": 35.0
+      }
+    }
+  },
+  "agente_ping": {
+    "activo": true,
+    "intervalo_segundos": 30,
+    "timeout_ping": 3,
+    "dispositivos_criticos": [
+      "Router-Principal",
+      "Servidor-Web"
+    ]
+  }
+}

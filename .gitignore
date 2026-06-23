@@ -216,3 +216,28 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# SSH Keys directory
+keys/
+*.pem
+*.key
+*.pub
+
+# Logs y reportes del sistema de monitoreo
+logs/
+*.log
+reporte_alarmas_*.txt
+alarmas_activas.json
+historial_eventos.json
+
+# Entorno virtual
+venv/
+.venv/
+
+# Archivos de desarrollo (no para producción)
+ARQUITECTURA_STATE_MACHINE.md
+CONFIRMACIONES_CONVERTIDAS.md
+compat_legacy.py
+*_backup.py
+*_old.py
+*_legacy.py
