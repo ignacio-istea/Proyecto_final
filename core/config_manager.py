@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Gestor de configuración del sistema
-Separado de las métricas para mejor modularización
+
 """
 
 import json
@@ -124,7 +124,7 @@ def _setup_logging(log_config):
         format='%(asctime)s - %(levelname)s - %(message)s',
         handlers=[
             logging.FileHandler(log_file),
-            logging.StreamHandler()
+            #logging.StreamHandler()
         ]
     )
 

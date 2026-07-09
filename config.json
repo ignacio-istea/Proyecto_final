@@ -201,6 +201,23 @@
         "critico": 50.0,
         "clear": 35.0
       }
+    },
+    "DNS-Google": {
+      "cpu": {
+        "warning": 56.0,
+        "critico": 80.0,
+        "clear": 48.0
+      },
+      "memoria": {
+        "warning": 59.5,
+        "critico": 85.0,
+        "clear": 51.0
+      },
+      "temperatura": {
+        "warning": 40.0,
+        "critico": 50.0,
+        "clear": 35.0
+      }
     }
   },
   "agente_ping": {

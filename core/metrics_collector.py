@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Módulo de obtención de métricas del sistema
-Separado del config_manager para mejor modularización
+
 """
 
 import subprocess

@@ -63,27 +63,20 @@ python3 agents/ag_ssh.py          # Monitoreo SSH remoto
 ## 📁 Estructura del Proyecto (Modularizada)
 ```
 ├── main.py                 # Punto de entrada principal
-├── config.json            # Configuración del sistema
-├── setup.py               # Instalador de dependencias  
 ├── requirements.txt       # Lista de dependencias
-├── compat_legacy.py       # Compatibilidad hacia atrás
 ├── logs/                  # Archivos de registro
 ├── keys/                  # Claves SSH
 ├── core/                  # Módulo núcleo del sistema
-│   ├── __init__.py        
 │   └── config_manager.py  # Sistema principal de monitoreo
 ├── agents/                # Módulo de agentes especializados
-│   ├── __init__.py
 │   ├── ag_controller.py   # Controlador de agentes
 │   ├── ag_ping.py         # Agente de conectividad
 │   └── ag_ssh.py          # Agente SSH remoto
 ├── ui/                    # Módulo de interfaz de usuario
-│   ├── __init__.py
 │   ├── menu_system.py     # Sistema de menús
 │   ├── dashboard.py       # Tablero de alarmas
 │   └── config_interface.py # Configurador interactivo
 └── utils/                 # Módulo de utilidades compartidas
-    ├── __init__.py
     ├── notifications.py   # Sistema de notificaciones
     └── logging_utils.py   # Utilidades de logging
 ```

@@ -87,11 +87,11 @@ def _inicializar_umbrales_equipo(equipo_nombre):
 def mostrar_menu_principal():
     """Muestra el menú principal de opciones"""
     opciones = [
-        "📊 Ver umbrales actuales",
+        "📊 Ver umbrales",
         "⚙️  Configurar umbrales por equipo",
         "🖥️  Gestionar equipos",
         "🌐 Configurar umbrales globales",
-        "🚨 Ver tablero de alarmas",
+        "🚨 Ver tablero",
         "💾 Guardar y salir",
         "❌ Salir sin guardar"
     ]
