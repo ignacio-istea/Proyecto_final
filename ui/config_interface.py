@@ -221,10 +221,10 @@ def ejecutar_configurador():
             
             elif "🚨 Ver tablero" in opcion:
                 try:
-                    from tablero_alarmas import ejecutar_tablero_alarmas
+                    from ui.dashboard import ejecutar_tablero_alarmas
                     ejecutar_tablero_alarmas(_config_path)
-                except ImportError:
-                    print("❌ Error: No se pudo cargar el módulo de tablero de alarmas")
+                except ImportError as e:
+                    print(f"❌ Error: No se pudo cargar el módulo de tablero de alarmas: {e}")
                     input("\nPresiona Enter para continuar...")
                 except Exception as e:
                     print(f"❌ Error en tablero de alarmas: {e}")
@@ -261,20 +261,148 @@ def ejecutar_configurador():
             print(f"❌ Error: {e}")
             input("\nPresiona Enter para continuar...")
 
-# Funciones simplificadas para las funcionalidades principales
 def configurar_umbrales_globales():
     """Configura los umbrales globales del sistema"""
-    print("Funcionalidad de umbrales globales disponible")
+    monitoreo = _config['monitoreo']
+    campos = [
+        ('cpu_limite',      'CPU crítico (%)',         monitoreo['cpu_limite']),
+        ('memoria_limite',  'Memoria crítica (%)',     monitoreo['memoria_limite']),
+        ('temp_limite',     'Temperatura crítica (°C)', monitoreo['temp_limite']),
+    ]
+    for clave, etiqueta, actual in campos:
+        resp = questionary.text(
+            f"{etiqueta} [actual: {actual}]:",
+            default=str(actual),
+            style=_custom_style
+        ).ask()
+        if resp is None:
+            return
+        try:
+            _config['monitoreo'][clave] = float(resp)
+        except ValueError:
+            print(f"⚠️  Valor inválido para {etiqueta}, se mantiene {actual}")
+    print("✓ Umbrales globales actualizados (recuerda guardar)")
     input("\nPresiona Enter para continuar...")
+
 
 def gestionar_equipos():
     """Menú para gestionar equipos del sistema"""
-    print("Funcionalidad de gestión de equipos disponible")
+    while True:
+        nombres = [e['nombre'] for e in _config['equipos']]
+        opciones = [f"✏️  Editar: {n}" for n in nombres]
+        opciones += ["➕ Agregar nuevo equipo", "← Volver"]
+
+        seleccion = questionary.select(
+            "🖥️  Gestión de equipos:",
+            choices=opciones,
+            style=_custom_style
+        ).ask()
+
+        if not seleccion or seleccion == "← Volver":
+            break
+
+        if seleccion == "➕ Agregar nuevo equipo":
+            _agregar_equipo()
+        else:
+            nombre = seleccion.replace("✏️  Editar: ", "")
+            equipo = next(e for e in _config['equipos'] if e['nombre'] == nombre)
+            _editar_equipo(equipo)
+
+
+def _agregar_equipo():
+    """Solicita datos y agrega un nuevo equipo a la configuración"""
+    print("\n➕ NUEVO EQUIPO")
+    campos = [
+        ('nombre',       'Nombre del equipo',   ''),
+        ('ip',           'Dirección IP',         ''),
+        ('user',         'Usuario SSH',          'root'),
+        ('port',         'Puerto SSH',           '22'),
+        ('tipo',         'Tipo (servidor/router/local/externo/switch/workstation)', 'servidor'),
+        ('ssh_key_path', 'Ruta clave SSH (vacío si no aplica)', ''),
+    ]
+    nuevo = {}
+    for clave, etiqueta, default in campos:
+        resp = questionary.text(f"{etiqueta}:", default=default, style=_custom_style).ask()
+        if resp is None:
+            print("⚠️  Operación cancelada")
+            return
+        nuevo[clave] = int(resp) if clave == 'port' else resp
+
+    ssh_activo = questionary.confirm("¿SSH activo?", default=False, style=_custom_style).ask()
+    ping_activo = questionary.confirm("¿Ping activo?", default=True, style=_custom_style).ask()
+    nuevo['ssh_activo'] = bool(ssh_activo)
+    nuevo['ping_activo'] = bool(ping_activo)
+
+    _config['equipos'].append(nuevo)
+    print(f"✓ Equipo '{nuevo['nombre']}' agregado (recuerda guardar)")
     input("\nPresiona Enter para continuar...")
 
+
+def _editar_equipo(equipo):
+    """Permite editar los campos de un equipo existente"""
+    print(f"\n✏️  EDITANDO: {equipo['nombre']}")
+    campos_editables = ['nombre', 'ip', 'user', 'port', 'tipo', 'ssh_key_path']
+    for clave in campos_editables:
+        actual = equipo.get(clave, '')
+        resp = questionary.text(
+            f"{clave} [actual: {actual}]:",
+            default=str(actual),
+            style=_custom_style
+        ).ask()
+        if resp is None:
+            return
+        equipo[clave] = int(resp) if clave == 'port' else resp
+
+    ssh_activo = questionary.confirm(
+        f"¿SSH activo? [actual: {equipo.get('ssh_activo', False)}]",
+        default=equipo.get('ssh_activo', False),
+        style=_custom_style
+    ).ask()
+    ping_activo = questionary.confirm(
+        f"¿Ping activo? [actual: {equipo.get('ping_activo', True)}]",
+        default=equipo.get('ping_activo', True),
+        style=_custom_style
+    ).ask()
+    equipo['ssh_activo'] = bool(ssh_activo)
+    equipo['ping_activo'] = bool(ping_activo)
+    print(f"✓ Equipo '{equipo['nombre']}' actualizado (recuerda guardar)")
+    input("\nPresiona Enter para continuar...")
+
+
 def _configurar_niveles_metrica(equipo_nombre, metrica, unidad):
-    """Configura los niveles de una métrica"""
-    print(f"Configurando {metrica} para {equipo_nombre}")
+    """Solicita y guarda los 3 niveles de umbral para una métrica"""
+    umbrales = _config['umbrales_por_equipo'][equipo_nombre][metrica]
+    print(f"\n⚙️  {equipo_nombre} — {metrica.upper()} (orden: clear < warning < crítico)")
+
+    niveles = [
+        ('clear',   f'Clear  (recuperación) [{umbrales["clear"]}{unidad}]'),
+        ('warning', f'Warning (preventivo)  [{umbrales["warning"]}{unidad}]'),
+        ('critico', f'Crítico (alarma)      [{umbrales["critico"]}{unidad}]'),
+    ]
+    nuevos = {}
+    for clave, etiqueta in niveles:
+        resp = questionary.text(
+            f"{etiqueta}:",
+            default=str(umbrales[clave]),
+            style=_custom_style
+        ).ask()
+        if resp is None:
+            print("⚠️  Operación cancelada")
+            return
+        try:
+            nuevos[clave] = float(resp)
+        except ValueError:
+            print(f"⚠️  Valor inválido, se mantiene {umbrales[clave]}")
+            nuevos[clave] = umbrales[clave]
+
+    # Validar orden lógico
+    if not (nuevos['clear'] < nuevos['warning'] < nuevos['critico']):
+        print("❌ Error: los valores deben cumplir clear < warning < crítico")
+        input("\nPresiona Enter para continuar...")
+        return
+
+    _config['umbrales_por_equipo'][equipo_nombre][metrica].update(nuevos)
+    print(f"✓ Umbrales de {metrica} actualizados para {equipo_nombre} (recuerda guardar)")
     input("\nPresiona Enter para continuar...")
 
 
