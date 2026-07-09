@@ -22,29 +22,54 @@ _dispositivos_offline = set()
 _logger = None
 
 def setup_logging():
-    """Configura el sistema de logging"""
+    """Configura el logger propio del agente (solo archivo, sin consola)"""
     global _logger
     Path("./logs").mkdir(exist_ok=True)
-    
-    # Configurar logging solo para archivo, sin consola
-    logging.basicConfig(
-        level=logging.INFO,
-        format='%(asctime)s - %(levelname)s - %(message)s',
-        handlers=[
-            logging.FileHandler('./logs/agente_ping.log')
-            # Removido StreamHandler() para evitar salida a consola
-        ]
-    )
-    _logger = logging.getLogger(__name__)
+    _logger = logging.getLogger('agente_ping')
+    _logger.setLevel(logging.INFO)
+    _logger.propagate = False
+    if not _logger.handlers:
+        handler = logging.FileHandler('./logs/agente_ping.log', encoding='utf-8')
+        handler.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s - %(message)s'))
+        _logger.addHandler(handler)
     
 def cargar_config_ping(config_path="config.json"):
-    """Carga la configuración desde JSON"""
+    """Carga la configuración desde JSON con manejo robusto"""
     try:
-        with open(config_path, 'r') as f:
-            return json.load(f)
+        with open(config_path, 'r', encoding='utf-8') as f:
+            config = json.load(f)
+            
+            # Validar estructura básica
+            if not isinstance(config, dict):
+                raise ValueError("Configuración debe ser un diccionario")
+            
+            if 'equipos' not in config:
+                raise ValueError("Configuración debe contener 'equipos'")
+            
+            if not isinstance(config['equipos'], list):
+                raise ValueError("'equipos' debe ser una lista")
+            
+            return config
+            
+    except FileNotFoundError as e:
+        if _logger:
+            _logger.error(f"Archivo de configuración no encontrado: {config_path}")
+        return None
+    except json.JSONDecodeError as e:
+        if _logger:
+            _logger.error(f"Error en formato JSON: {e}")
+        return None
+    except PermissionError as e:
+        if _logger:
+            _logger.error(f"Error de permisos: {e}")
+        return None
+    except ValueError as e:
+        if _logger:
+            _logger.error(f"Error de validación: {e}")
+        return None
     except Exception as e:
         if _logger:
-            _logger.error(f"Error cargando configuración: {e}")
+            _logger.error(f"Error inesperado cargando configuración: {e}")
         return None
 
 def hacer_ping(ip, timeout=3):
@@ -74,74 +99,27 @@ def hacer_ping(ip, timeout=3):
         return False
     
 def generar_alarma_conexion(equipo, estado):
-    """Genera alarma de conexión perdida o restaurada"""
+    """Genera alarma de conexión perdida o restaurada via data_manager"""
     try:
-        # Cargar alarmas activas
-        alarmas_file = "./logs/alarmas_activas.json"
-        Path(alarmas_file).parent.mkdir(exist_ok=True)
-        
-        try:
-            with open(alarmas_file, 'r') as f:
-                alarmas = json.load(f)
-        except:
-            alarmas = {}
-        
-        alarma_id = f"conexion_{equipo['nombre']}"
-        timestamp = datetime.now().isoformat()
-        
+        from ui.dashboard_modules.data_manager import registrar_evento
+        nombre = equipo['nombre']
+
         if estado == "offline":
-            # Dispositivo perdió conexión
-            if alarma_id not in alarmas:
-                alarma = {
-                    "id": alarma_id,
-                    "equipo": equipo['nombre'],
-                    "ip": equipo['ip'],
-                    "tipo": "conexion",
-                    "severidad": "critico",
-                    "mensaje": f"Conexión perdida con {equipo['nombre']} ({equipo['ip']})",
-                    "timestamp_inicio": timestamp,
-                    "estado": "activo",
-                    "eventos": [{
-                        "timestamp": timestamp,
-                        "evento": "conexion_perdida",
-                        "detalle": "Dispositivo no responde a ping"
-                    }]
-                }
-                
-                alarmas[alarma_id] = alarma
-                if _logger:
-                    _logger.warning(f"🔴 CONEXIÓN PERDIDA: {equipo['nombre']} ({equipo['ip']})")
-                
-                # Notificación del sistema
-                enviar_notificacion_ping(
-                    f"Conexión Perdida - {equipo['nombre']}",
-                    f"El dispositivo {equipo['nombre']} ({equipo['ip']}) no responde"
-                )
-        
+            registrar_evento(nombre, 'conexion', 'critico', 0, 0)
+            if _logger:
+                _logger.warning(f"🔴 CONEXIÓN PERDIDA: {nombre} ({equipo['ip']})")
+            enviar_notificacion_ping(
+                f"Conexión Perdida - {nombre}",
+                f"El dispositivo {nombre} ({equipo['ip']}) no responde"
+            )
         elif estado == "online":
-            # Dispositivo restauró conexión
-            if alarma_id in alarmas:
-                alarmas[alarma_id]["estado"] = "resuelto"
-                alarmas[alarma_id]["timestamp_fin"] = timestamp
-                alarmas[alarma_id]["eventos"].append({
-                    "timestamp": timestamp,
-                    "evento": "conexion_restaurada",
-                    "detalle": "Dispositivo vuelve a responder a ping"
-                })
-                
-                if _logger:
-                    _logger.info(f"🟢 CONEXIÓN RESTAURADA: {equipo['nombre']} ({equipo['ip']})")
-                
-                # Notificación del sistema
-                enviar_notificacion_ping(
-                    f"Conexión Restaurada - {equipo['nombre']}",
-                    f"El dispositivo {equipo['nombre']} ({equipo['ip']}) vuelve a responder"
-                )
-        
-        # Guardar alarmas
-        with open(alarmas_file, 'w') as f:
-            json.dump(alarmas, f, indent=2)
-            
+            registrar_evento(nombre, 'conexion', 'clear', 0, 0)
+            if _logger:
+                _logger.info(f"🟢 CONEXIÓN RESTAURADA: {nombre} ({equipo['ip']})")
+            enviar_notificacion_ping(
+                f"Conexión Restaurada - {nombre}",
+                f"El dispositivo {nombre} ({equipo['ip']}) vuelve a responder"
+            )
     except Exception as e:
         if _logger:
             _logger.error(f"Error generando alarma: {e}")
@@ -173,49 +151,88 @@ def enviar_notificacion_ping(titulo, mensaje):
             _logger.error(f"Error enviando notificación: {e}")
     
 def verificar_dispositivos():
-    """Verifica conectividad de todos los dispositivos"""
+    """Verifica conectividad de todos los dispositivos con manejo robusto"""
     global _dispositivos_offline
     
-    config = cargar_config_ping()
-    if not config:
-        return
-    
-    equipos = config.get('equipos', [])
-    # Solo verificar equipos que tengan ping activo
-    equipos_ping = [e for e in equipos if e.get('ping_activo', True)]
-    
-    for equipo in equipos_ping:
-        try:
-            ip = equipo.get('ip')
-            nombre = equipo.get('nombre')
-            
-            if ip == 'localhost' or ip == '127.0.0.1':
-                # Localhost siempre está "online"
-                if nombre in _dispositivos_offline:
-                    _dispositivos_offline.remove(nombre)
-                    generar_alarma_conexion(equipo, "online")
-                continue
-            
-            ping_ok = hacer_ping(ip)
-            
-            if ping_ok:
-                # Dispositivo online
-                if nombre in _dispositivos_offline:
-                    _dispositivos_offline.remove(nombre)
-                    generar_alarma_conexion(equipo, "online")
-                    if _logger:
-                        _logger.info(f"✅ {nombre} ({ip}) - CONEXIÓN RESTAURADA")
-            else:
-                # Dispositivo offline
-                if nombre not in _dispositivos_offline:
-                    _dispositivos_offline.add(nombre)
-                    generar_alarma_conexion(equipo, "offline")
-                    if _logger:
-                        _logger.warning(f"❌ {nombre} ({ip}) - CONEXIÓN PERDIDA")
-                    
-        except Exception as e:
+    try:
+        config = cargar_config_ping()
+        if not config:
             if _logger:
-                _logger.error(f"Error verificando {equipo.get('nombre', 'desconocido')}: {e}")
+                _logger.warning("No se pudo cargar configuración para verificación")
+            return
+        
+        equipos = config.get('equipos', [])
+        if not equipos:
+            if _logger:
+                _logger.info("No hay equipos configurados para ping")
+            return
+        
+        # Solo verificar equipos que tengan ping activo
+        equipos_ping = []
+        for equipo in equipos:
+            try:
+                if equipo.get('ping_activo', True):
+                    # Validar equipo mínimo
+                    if 'nombre' in equipo and 'ip' in equipo:
+                        equipos_ping.append(equipo)
+                    else:
+                        if _logger:
+                            _logger.warning(f"Equipo sin nombre o IP: {equipo}")
+            except Exception as e:
+                if _logger:
+                    _logger.error(f"Error procesando equipo: {e}")
+        
+        if not equipos_ping:
+            if _logger:
+                _logger.info("No hay equipos con ping habilitado")
+            return
+        
+        for equipo in equipos_ping:
+            try:
+                ip = equipo.get('ip', '')
+                nombre = equipo.get('nombre', 'desconocido')
+                
+                # Validar IP
+                if not ip:
+                    if _logger:
+                        _logger.warning(f"Equipo {nombre} sin IP")
+                    continue
+                
+                if ip == 'localhost' or ip == '127.0.0.1':
+                    # Localhost siempre está "online"
+                    if nombre in _dispositivos_offline:
+                        _dispositivos_offline.remove(nombre)
+                        generar_alarma_conexion(equipo, "online")
+                    continue
+                
+                # Verificar ping
+                ping_ok = hacer_ping(ip)
+                
+                if ping_ok:
+                    # Dispositivo online
+                    if nombre in _dispositivos_offline:
+                        _dispositivos_offline.remove(nombre)
+                        generar_alarma_conexion(equipo, "online")
+                        if _logger:
+                            _logger.info(f"✅ {nombre} ({ip}) - CONEXIÓN RESTAURADA")
+                else:
+                    # Dispositivo offline
+                    if nombre not in _dispositivos_offline:
+                        _dispositivos_offline.add(nombre)
+                        generar_alarma_conexion(equipo, "offline")
+                        if _logger:
+                            _logger.warning(f"❌ {nombre} ({ip}) - CONEXIÓN PERDIDA")
+                        
+            except KeyError as e:
+                if _logger:
+                    _logger.error(f"Falta clave en equipo: {e}")
+            except Exception as e:
+                if _logger:
+                    _logger.error(f"Error verificando {equipo.get('nombre', 'desconocido')}: {e}")
+                
+    except Exception as e:
+        if _logger:
+            _logger.error(f"Error crítico en verificar_dispositivos: {e}")
 
 def job_verificacion_ping():
     """Job que se ejecuta cada 30 segundos"""
@@ -226,31 +243,57 @@ def job_verificacion_ping():
             _logger.error(f"Error en job de verificación: {e}")
     
 def iniciar_monitoreo_ping():
-    """Inicia el monitoreo de ping en background"""
+    """Inicia el monitoreo de ping en background con manejo robusto"""
     global _agente_running
     
-    if _agente_running:
+    try:
+        if _agente_running:
+            if _logger:
+                _logger.info("El agente de ping ya está ejecutándose")
+            return
+        
         if _logger:
-            _logger.info("El agente de ping ya está ejecutándose")
-        return
-    
-    if _logger:
-        _logger.info("🚀 Iniciando Agente de Ping...")
-    _agente_running = True
-    
-    # Programar verificación cada 30 segundos
-    schedule.every(30).seconds.do(job_verificacion_ping)
-    
-    # Ejecutar primera verificación inmediatamente
-    job_verificacion_ping()
-    
-    # Loop principal
-    while _agente_running:
-        schedule.run_pending()
-        time.sleep(1)
-    
-    if _logger:
-        _logger.info("🛑 Agente de Ping detenido")
+            _logger.info("🚀 Iniciando Agente de Ping...")
+        
+        # Verificar configuración antes de iniciar
+        config = cargar_config_ping()
+        if not config:
+            if _logger:
+                _logger.error("No se pudo cargar configuración, agente no iniciado")
+            return
+        
+        _agente_running = True
+        
+        # Programar verificación cada 30 segundos
+        schedule.every(30).seconds.do(job_verificacion_ping)
+        
+        # Ejecutar primera verificación inmediatamente
+        job_verificacion_ping()
+        
+        # Loop principal con manejo de excepciones
+        while _agente_running:
+            try:
+                schedule.run_pending()
+                time.sleep(1)
+            except KeyboardInterrupt:
+                if _logger:
+                    _logger.info("Agente interrumpido por usuario")
+                _agente_running = False
+                break
+            except Exception as e:
+                if _logger:
+                    _logger.error(f"Error en loop principal del agente: {e}")
+                # Continuar ejecución a menos que sea error crítico
+                time.sleep(5)  # Esperar antes de reintentar
+        
+        if _logger:
+            _logger.info("🛑 Agente de Ping detenido")
+            
+    except Exception as e:
+        if _logger:
+            _logger.error(f"Error crítico iniciando agente de ping: {e}")
+        _agente_running = False
+        raise
 
 def detener_monitoreo_ping():
     """Detiene el monitoreo"""

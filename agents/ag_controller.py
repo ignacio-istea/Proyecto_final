@@ -130,50 +130,41 @@ def stop_ssh_agent():
 def start_monitor_distribuido():
     """Inicia el monitor distribuido en background"""
     global monitor_running
-    
+
     if monitor_running:
         print("ℹ️ El monitor distribuido ya está ejecutándose")
         return
-    
+
     try:
         print("📡 Iniciando monitor distribuido en segundo plano...")
-        
-        # Importar funciones del monitor
+
         from core.config_manager import crear_monitor_distribuido, iniciar_monitoreo
-        
-        # Crear monitor
+
         monitor = crear_monitor_distribuido()
-        
-        # Iniciar en background usando thread
+        monitor_running = True  # marcar ANTES de lanzar el thread
+
         def run_monitor():
             global monitor_running
             try:
-                monitor_running = True
                 iniciar_monitoreo(monitor)
-            except Exception as e:
-                print(f"❌ Error en monitor: {e}")
+            except Exception:
+                pass  # errores van al log, no a la terminal
             finally:
                 monitor_running = False
-        
+
         monitor_thread = threading.Thread(target=run_monitor, daemon=True)
         monitor_thread.start()
-        
-        time.sleep(2)  # Dar tiempo a que inicie
-        
-        if monitor_running:
-            print("✅ Monitor distribuido iniciado exitosamente")
-            print("📊 Monitoreando CPU, memoria y temperatura")
-            print("📄 Logs disponibles en: ./logs/monitor_distribuido.log")
-        else:
-            print("❌ El monitor no se pudo iniciar correctamente")
-        
+
+        print("✅ Monitor distribuido iniciado exitosamente")
+        print("📊 Monitoreando CPU, memoria y temperatura")
+        print("📄 Logs disponibles en: ./logs/monitor_distribuido.log")
+
     except ImportError as e:
+        monitor_running = False
         print(f"❌ Error importando monitor distribuido: {e}")
     except Exception as e:
-        print(f"❌ Error iniciando monitor distribuido: {e}")
-        import traceback
-        traceback.print_exc()
         monitor_running = False
+        print(f"❌ Error iniciando monitor distribuido: {e}")
 
 def stop_monitor_distribuido():
     """Detiene el monitor distribuido"""

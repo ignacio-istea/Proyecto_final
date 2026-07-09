@@ -27,7 +27,7 @@
       "ssh_key_path": "./keys/id_ed25519",
       "port": 2022,
       "tipo": "router",
-      "ssh_activo": true,
+      "ssh_activo": false,
       "ping_activo": true
     },
     {

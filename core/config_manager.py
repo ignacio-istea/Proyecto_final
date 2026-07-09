@@ -15,8 +15,17 @@ from core.metrics_collector import obtener_metricas_locales, obtener_metricas_re
 
 def cargar_configuracion(config_path="config.json"):
     """Carga la configuración desde archivo JSON"""
-    with open(config_path, 'r') as f:
-        return json.load(f)
+    try:
+        with open(config_path, 'r', encoding='utf-8') as f:
+            return json.load(f)
+    except FileNotFoundError as e:
+        raise FileNotFoundError(f"No se encontró el archivo de configuración: {config_path}") from e
+    except json.JSONDecodeError as e:
+        raise ValueError(f"Archivo de configuración con formato JSON inválido: {config_path}") from e
+    except PermissionError as e:
+        raise PermissionError(f"Sin permisos para leer el archivo de configuración: {config_path}") from e
+    except Exception as e:
+        raise RuntimeError(f"Error al cargar configuración: {e}") from e
 
 def get_equipos(config):
     """Obtiene lista de equipos de la configuración"""
@@ -34,6 +43,9 @@ def get_alertas_config(config):
     """Obtiene configuración de alertas"""
     return config['alertas']
 
+# Logger propio del monitor — no toca el logger raíz del proceso
+_logger = logging.getLogger('monitor_distribuido')
+
 def crear_sistema_alertas(config_alertas, umbrales_por_equipo=None):
     """Crea configuración del sistema de alertas"""
     config = config_alertas.copy()
@@ -46,15 +58,14 @@ def crear_sistema_alertas(config_alertas, umbrales_por_equipo=None):
 def enviar_alerta(sistema_alertas, equipo_nombre, tipo_alerta, valor, limite, severidad='critico'):
     """Envía una alerta del sistema"""
     mensaje = f"ALERTA {severidad.upper()}: {equipo_nombre} - {tipo_alerta}: {valor}% (límite: {limite}%)"
-    
-    # Log según severidad
+
     if severidad == 'critico':
-        logging.critical(mensaje)
+        _logger.critical(mensaje)
     elif severidad == 'warning':
-        logging.warning(mensaje)
+        _logger.warning(mensaje)
     else:
-        logging.info(f"CLEAR: {equipo_nombre} - {tipo_alerta} normalizado: {valor}%")
-    
+        _logger.info(f"CLEAR: {equipo_nombre} - {tipo_alerta} normalizado: {valor}%")
+
     if sistema_alertas['config']['notificaciones_desktop']:
         _enviar_notificacion_desktop(equipo_nombre, tipo_alerta, valor, severidad)
 
@@ -73,9 +84,8 @@ def _enviar_notificacion_desktop(equipo, tipo, valor, severidad):
         # Usar la función de utilidades
         enviar_notificacion(titulo, mensaje)
         
-    except Exception as e:
-        # Fallback: log como notificación
-        logging.info(f"NOTIFICACIÓN: {equipo} - {tipo.upper()}: {valor}% ({severidad})")
+    except Exception:
+        pass  # Notificación desktop opcional, fallo silencioso
 
 def crear_monitor_distribuido():
     """Inicializa el monitor distribuido"""
@@ -95,13 +105,13 @@ def crear_monitor_distribuido():
     
     estados_alertas = {}  # Para tracking de estados
     
-    # Inicializar manager de alarmas
+    # Registrar eventos de alarma via data_manager
     try:
-        from ui.dashboard import AlarmManager
-        alarm_manager = AlarmManager()
+        from ui.dashboard_modules.data_manager import registrar_evento as _registrar_evento, init_alarm_data
+        init_alarm_data()  # inicializa _config y carga archivos existentes
+        alarm_manager = type('AlarmProxy', (), {'registrar_evento': staticmethod(_registrar_evento)})()
     except ImportError:
         alarm_manager = None
-        logging.warning("Tablero de alarmas no disponible")
     
     return {
         'config': config,
@@ -114,46 +124,73 @@ def crear_monitor_distribuido():
     }
 
 def _setup_logging(log_config):
-    """Configura el sistema de logging"""
-    Path(log_config['directorio']).mkdir(exist_ok=True)
-    
-    log_file = Path(log_config['directorio']) / log_config['archivo_principal']
-    
-    logging.basicConfig(
-        level=logging.INFO,
-        format='%(asctime)s - %(levelname)s - %(message)s',
-        handlers=[
-            logging.FileHandler(log_file),
-            #logging.StreamHandler()
-        ]
-    )
+    """Configura el logger propio del monitor (solo archivo, sin consola)"""
+    try:
+        Path(log_config['directorio']).mkdir(exist_ok=True)
+        log_file = Path(log_config['directorio']) / log_config['archivo_principal']
+
+        # Usar logger con nombre propio para no interferir con el proceso principal
+        _logger.setLevel(logging.INFO)
+        _logger.propagate = False  # No propagar al logger raíz
+
+        # Evitar duplicar handlers si se llama más de una vez
+        if not _logger.handlers:
+            handler = logging.FileHandler(log_file, encoding='utf-8')
+            handler.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s - %(message)s'))
+            _logger.addHandler(handler)
+
+    except Exception as e:
+        # Silencioso — el monitor no debe romper la terminal
+        pass
+
+def monitorear_equipo_seguro(monitor, equipo):
+    """Wrapper seguro para monitorear_equipo con manejo de excepciones"""
+    try:
+        monitorear_equipo(monitor, equipo)
+    except Exception as e:
+        _logger.error(f"Error crítico monitoreando {equipo.get('nombre', 'desconocido')}: {e}")
 
 def monitorear_equipo(monitor, equipo):
     """Monitorea un equipo específico"""
-    # Monitoreo local si es localhost o equipo local
-    if (equipo['ip'] in ['localhost', '127.0.0.1'] or 
-        equipo['nombre'].lower().startswith('local') or
-        equipo.get('tipo') == 'local'):
+    try:
+        # Validar datos del equipo
+        if not equipo or 'nombre' not in equipo or 'ip' not in equipo:
+            _logger.error(f"Equipo inválido o datos incompletos: {equipo}")
+            return
         
-        try:
-            metricas = obtener_metricas_locales()
-            logging.info(f"Monitoreando localmente: {equipo['nombre']}")
-        except Exception as e:
-            logging.error(f"Error obteniendo métricas locales para {equipo['nombre']}: {e}")
+        # Saltar equipos con SSH deshabilitado que no sean locales
+        es_local = (equipo['ip'] in ['localhost', '127.0.0.1'] or
+                    equipo.get('tipo') == 'local')
+        ssh_activo = equipo.get('ssh_activo', False)
+
+        if es_local:
+            try:
+                metricas = obtener_metricas_locales()
+            except Exception as e:
+                _logger.error(f"Error métricas locales {equipo['nombre']}: {e}")
+                return
+        elif not ssh_activo:
+            return  # SSH deshabilitado, no monitorear
+        else:
+            try:
+                metricas = obtener_metricas_remotas(equipo)
+            except Exception as e:
+                _logger.error(f"Error métricas remotas {equipo['nombre']}: {e}")
+                return
+
+        if not metricas:
+            _logger.warning(f"Sin métricas para {equipo['nombre']}")
             return
-    else:
-        # Monitoreo remoto SSH
-        try:
-            metricas = obtener_metricas_remotas(equipo)
-        except Exception as e:
-            logging.error(f"Error obteniendo métricas remotas para {equipo['nombre']}: {e}")
-            return
-    
-    # Verificar límites y mostrar información
-    _verificar_limites(monitor, equipo['nombre'], metricas)
-    logging.info(f"{equipo['nombre']}: CPU={metricas.get('cpu', 0):.1f}%, "
-                f"MEM={metricas.get('memoria', 0):.1f}%, "
-                f"TEMP={metricas.get('temperatura', 0):.1f}°C")
+
+        _verificar_limites(monitor, equipo['nombre'], metricas)
+        _logger.info(f"{equipo['nombre']}: CPU={metricas.get('cpu', 0):.1f}% "
+                     f"MEM={metricas.get('memoria', 0):.1f}% "
+                     f"TEMP={metricas.get('temperatura', 0):.1f}°C")
+
+    except KeyError as e:
+        _logger.error(f"Clave faltante en equipo {equipo.get('nombre', '?')}: {e}")
+    except Exception as e:
+        _logger.error(f"Error inesperado monitoreando {equipo.get('nombre', '?')}: {e}")
 
 def _verificar_limites(monitor, nombre_equipo, metricas):
     """Verifica los límites de las métricas y genera alertas"""
@@ -226,21 +263,60 @@ def _verificar_metrica(monitor, equipo, metrica, valor, umbrales_equipo, limite_
 
 def iniciar_monitoreo(monitor):
     """Inicia el monitoreo distribuido"""
-    monitor['ejecutando'] = True
-    logging.info("Iniciando monitoreo distribuido...")
-    
-    while monitor['ejecutando']:
-        for equipo in monitor['equipos']:
-            if not monitor['ejecutando']:
-                break
-            threading.Thread(target=monitorear_equipo, args=(monitor, equipo)).start()
+    try:
+        # Validar estructura del monitor
+        if not monitor or 'equipos' not in monitor or 'monitoreo_config' not in monitor:
+            _logger.error("Estructura del monitor inválida")
+            return
         
-        time.sleep(monitor['monitoreo_config']['intervalo_segundos'])
+        monitor['ejecutando'] = True
+        _logger.info("Iniciando monitoreo distribuido...")
+        
+        threads_activos = []
+        
+        while monitor['ejecutando']:
+            for equipo in monitor['equipos']:
+                if not monitor['ejecutando']:
+                    break
+                
+                # Validar equipo antes de crear thread
+                if not equipo or 'nombre' not in equipo:
+                    _logger.warning("Equipo inválido omitido")
+                    continue
+                
+                thread = threading.Thread(
+                    target=monitorear_equipo_seguro,
+                    args=(monitor, equipo),
+                    daemon=True,
+                    name=f"Monitor-{equipo['nombre']}"
+                )
+                thread.start()
+                threads_activos.append(thread)
+                
+                # Limitar threads activos para evitar sobrecarga
+                if len(threads_activos) > 10:
+                    # Esperar a que algunos threads terminen
+                    for t in threads_activos[:5]:
+                        if t.is_alive():
+                            t.join(timeout=1)
+                    threads_activos = [t for t in threads_activos if t.is_alive()]
+            
+            intervalo = monitor['monitoreo_config'].get('intervalo_segundos', 30)
+            time.sleep(intervalo)
+            
+    except KeyboardInterrupt:
+        _logger.info("Monitoreo interrumpido por usuario")
+        monitor['ejecutando'] = False
+    except Exception as e:
+        _logger.error(f"Error crítico en iniciar_monitoreo: {e}")
+        monitor['ejecutando'] = False
+    finally:
+        _logger.info("Monitoreo distribuido finalizado")
 
 def detener_monitoreo(monitor):
     """Detiene el monitoreo distribuido"""
     monitor['ejecutando'] = False
-    logging.info("Deteniendo monitoreo...")
+    _logger.info("Deteniendo monitoreo...")
 
 def main():
     """Función principal con manejo mejorado de errores"""

@@ -503,7 +503,7 @@ def clean_logs():
 
 def clean_alarms():
     """Limpia archivos de alarmas"""
-    alarm_files = ["alarmas_activas.json", "eventos_alarmas.json"]
+    alarm_files = ["./logs/alarmas_activas.json", "./logs/historial_eventos.json"]
     for file in alarm_files:
         if os.path.exists(file):
             os.remove(file)

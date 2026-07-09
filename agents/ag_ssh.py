@@ -28,20 +28,16 @@ _ssh_conexiones_activas = {}
 _ssh_logger = None
 
 def setup_logging_ssh():
-    """Configura el sistema de logging"""
+    """Configura el logger propio del agente SSH (solo archivo, sin consola)"""
     global _ssh_logger
     Path("./logs").mkdir(exist_ok=True)
-    
-    # Configurar logging solo para archivo, sin consola
-    logging.basicConfig(
-        level=logging.INFO,
-        format='%(asctime)s - %(levelname)s - %(message)s',
-        handlers=[
-            logging.FileHandler('./logs/agente_ssh.log')
-            # Removido StreamHandler() para evitar salida a consola
-        ]
-    )
-    _ssh_logger = logging.getLogger(__name__)
+    _ssh_logger = logging.getLogger('agente_ssh')
+    _ssh_logger.setLevel(logging.INFO)
+    _ssh_logger.propagate = False
+    if not _ssh_logger.handlers:
+        handler = logging.FileHandler('./logs/agente_ssh.log', encoding='utf-8')
+        handler.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s - %(message)s'))
+        _ssh_logger.addHandler(handler)
     
 def cargar_config_ssh(config_path="config.json"):
     """Carga la configuración desde JSON"""
@@ -278,91 +274,40 @@ def obtener_metricas_locales_ssh():
         return {'cpu': 0.0, 'memoria': 0.0, 'temperatura': 35.0}
     
 def procesar_alarmas_ssh(equipo, metricas):
-    """Procesa las métricas y genera alarmas si es necesario"""
+    """Procesa las métricas y genera alarmas via data_manager"""
     try:
+        from ui.dashboard_modules.data_manager import registrar_evento
+
         config = cargar_config_ssh()
         if not config:
             return
-        
+
         umbrales = config.get('umbrales_por_equipo', {}).get(equipo['nombre'], {})
         if not umbrales:
             return
-        
-        # Cargar alarmas activas
-        alarmas_file = "./logs/alarmas_activas.json"
-        Path(alarmas_file).parent.mkdir(exist_ok=True)
-        
-        try:
-            with open(alarmas_file, 'r') as f:
-                alarmas = json.load(f)
-        except:
-            alarmas = {}
-        
-        timestamp = datetime.now().isoformat()
-        
-        # Procesar cada métrica
+
         for metrica, valor in metricas.items():
             if metrica not in umbrales:
                 continue
-            
-            umbrales_metrica = umbrales[metrica]
-            clear_threshold = umbrales_metrica.get('clear', 70)
-            warning_threshold = umbrales_metrica.get('warning', 80)
-            critico_threshold = umbrales_metrica.get('critico', 95)
-            
-            # Determinar severidad
-            if valor >= critico_threshold:
-                severidad = "critico"
-                umbral = critico_threshold
-            elif valor >= warning_threshold:
-                severidad = "warning"
-                umbral = warning_threshold
-            elif valor <= clear_threshold:
-                severidad = "clear"
-                umbral = clear_threshold
-            else:
-                continue  # Valor en rango normal
-            
-            alarma_id = f"{equipo['nombre']}_{metrica}"
-            
-            if severidad == "clear":
-                # Limpiar alarma si existe
-                if alarma_id in alarmas:
-                    alarmas[alarma_id]["estado"] = "resuelto"
-                    alarmas[alarma_id]["timestamp_fin"] = timestamp
-                    if _ssh_logger:
-                        _ssh_logger.info(f"✅ {equipo['nombre']} - {metrica} normalizado: {valor:.1f}")
-            else:
-                # Crear o actualizar alarma
-                if alarma_id not in alarmas or alarmas[alarma_id].get("estado") == "resuelto":
-                    # Nueva alarma
-                    alarmas[alarma_id] = {
-                        "equipo": equipo['nombre'],
-                        "metrica": metrica,
-                        "severidad": severidad,
-                        "valor": valor,
-                        "umbral": umbral,
-                        "inicio_timestamp": timestamp,
-                        "ultimo_timestamp": timestamp,
-                        "estado": "activo",
-                        "contador_eventos": 1
-                    }
-                    if _ssh_logger:
-                        _ssh_logger.warning(f"🚨 {equipo['nombre']} - {metrica} {severidad.upper()}: {valor:.1f}")
-                else:
-                    # Actualizar alarma existente
-                    alarmas[alarma_id]["valor"] = valor
-                    alarmas[alarma_id]["ultimo_timestamp"] = timestamp
-                    alarmas[alarma_id]["contador_eventos"] += 1
-                    if alarmas[alarma_id]["severidad"] != severidad:
-                        alarmas[alarma_id]["severidad"] = severidad
-                        if _ssh_logger:
-                            _ssh_logger.warning(f"🔄 {equipo['nombre']} - {metrica} cambió a {severidad.upper()}: {valor:.1f}")
-        
-        # Guardar alarmas
-        with open(alarmas_file, 'w') as f:
-            json.dump(alarmas, f, indent=2)
-            
+
+            u = umbrales[metrica]
+            clear_t   = u.get('clear',   70)
+            warning_t = u.get('warning', 80)
+            critico_t = u.get('critico', 95)
+
+            if valor >= critico_t:
+                registrar_evento(equipo['nombre'], metrica, 'critico', valor, critico_t)
+                if _ssh_logger:
+                    _ssh_logger.warning(f"🚨 {equipo['nombre']} - {metrica} CRÍTICO: {valor:.1f}")
+            elif valor >= warning_t:
+                registrar_evento(equipo['nombre'], metrica, 'warning', valor, warning_t)
+                if _ssh_logger:
+                    _ssh_logger.warning(f"⚠️  {equipo['nombre']} - {metrica} WARNING: {valor:.1f}")
+            elif valor <= clear_t:
+                registrar_evento(equipo['nombre'], metrica, 'clear', valor, clear_t)
+                if _ssh_logger:
+                    _ssh_logger.info(f"✅ {equipo['nombre']} - {metrica} normalizado: {valor:.1f}")
+
     except Exception as e:
         if _ssh_logger:
             _ssh_logger.error(f"Error procesando alarmas para {equipo['nombre']}: {e}")
