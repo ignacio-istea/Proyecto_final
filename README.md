@@ -20,7 +20,7 @@ Sistema de monitoreo distribuido que supervisa múltiples equipos de red de form
 ## 📦 Instalación
 ```bash
 # Clonar el repositorio
-git clone <URL_DEL_REPOSITORIO>
+git clone https://github.com/ignacio-istea/Proyecto_final.git
 cd Proyecto_final
 
 # Crear entorno virtual

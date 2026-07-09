@@ -241,3 +241,5 @@ compat_legacy.py
 *_backup.py
 *_old.py
 *_legacy.py
+
+config.json

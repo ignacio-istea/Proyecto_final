@@ -20,33 +20,100 @@ def signal_handler(sig, frame):
     print("\n\n👋 Saliendo del sistema de monitoreo...")
     sys.exit(0)
 
+# Plantilla mínima para config.json
+_CONFIG_TEMPLATE = """{{
+  "equipos": [
+    {{
+      "nombre": "Equipo-Local",
+      "ip": "localhost",
+      "user": "local",
+      "ssh_key_path": "",
+      "port": 22,
+      "tipo": "local",
+      "ssh_activo": false,
+      "ping_activo": true
+    }}
+  ],
+  "monitoreo": {{
+    "intervalo_segundos": 30,
+    "temp_limite": 50.0,
+    "cpu_limite": 80.0,
+    "memoria_limite": 85.0,
+    "reintentos": 3
+  }},
+  "logging": {{
+    "directorio": "./logs",
+    "archivo_principal": "monitor_distribuido.log",
+    "max_bytes": 10485760,
+    "backup_count": 5
+  }},
+  "alertas": {{
+    "email_activo": false,
+    "notificaciones_desktop": true,
+    "voz_activa": false
+  }},
+  "umbrales_por_equipo": {{}},
+  "agente_ping": {{
+    "activo": true,
+    "intervalo_segundos": 30,
+    "timeout_ping": 3,
+    "dispositivos_criticos": []
+  }}
+}}"""
+
 def verificar_instalacion():
     """Verifica que el sistema esté correctamente instalado"""
-    archivos_requeridos = [
-        'config.json',
-        'core/config_manager.py', 
+    ok = True
+
+    # --- Archivos de código fuente (deben existir en el repo) ---
+    archivos_codigo = [
+        'core/config_manager.py',
         'ui/config_interface.py',
         'ui/dashboard.py',
-        'requirements.txt'
+        'requirements.txt',
     ]
-    
-    faltantes = []
-    for archivo in archivos_requeridos:
-        if not os.path.exists(archivo):
-            faltantes.append(archivo)
-    
-    if faltantes:
-        print(f"❌ Archivos faltantes: {', '.join(faltantes)}")
-        print("📝 Asegúrate de haber clonado el repositorio completo")
-        print("🔄 Si faltan dependencias, ejecuta:")
-        print("   pip install -r requirements.txt")
-        return False
-    
-    # Verificar directorios
-    os.makedirs("logs", exist_ok=True)
-    os.makedirs("keys", exist_ok=True)
-    
-    return True
+    faltantes_codigo = [f for f in archivos_codigo if not os.path.exists(f)]
+    if faltantes_codigo:
+        print("❌ Archivos del repositorio faltantes:")
+        for f in faltantes_codigo:
+            print(f"   • {f}")
+        print("   → Asegúrate de haber clonado el repositorio completo:")
+        print("     git clone https://github.com/ignacio-istea/Proyecto_final.git")
+        ok = False
+
+    # --- config.json (ignorado en .gitignore, debe crearse manualmente) ---
+    if not os.path.exists('config.json'):
+        print()
+        print("⚠️  Archivo 'config.json' no encontrado (está en .gitignore, no se versiona).")
+        print("   → Créalo manualmente en la raíz del proyecto.")
+        print("   → Plantilla mínima para copiar y pegar:")
+        print("   ─" * 30)
+        print(_CONFIG_TEMPLATE)
+        print("   ─" * 30)
+        print("   Guárdalo como 'config.json' y edita los equipos según tu red.")
+        ok = False
+
+    # --- Directorio keys/ (ignorado en .gitignore) ---
+    if not os.path.exists('keys'):
+        print()
+        print("⚠️  Directorio 'keys/' no encontrado (está en .gitignore, no se versiona).")
+        print("   → Créalo y coloca dentro las claves SSH de tus equipos:")
+        print("     mkdir keys")
+        print("     cp /ruta/a/tu/clave.pem keys/")
+        print("   → Si no usas SSH, puedes dejarlo vacío: mkdir keys")
+    else:
+        # El directorio existe pero puede estar vacío — solo informar
+        claves = [f for f in os.listdir('keys') if f.endswith(('.pem', '.key', '.pub', 'id_ed25519', 'id_rsa'))]
+        if not claves:
+            print()
+            print("ℹ️  El directorio 'keys/' existe pero no contiene claves SSH.")
+            print("   → Si usas conexiones SSH, copia tus claves ahí:")
+            print("     cp /ruta/a/tu/clave.pem keys/")
+
+    # --- Directorio logs/ (se puede crear automáticamente) ---
+    os.makedirs('logs', exist_ok=True)
+
+    return ok
 
 def mostrar_banner():
     """Muestra el banner del sistema"""
@@ -69,9 +136,14 @@ def main():
         signal.signal(signal.SIGINT, signal_handler)
         
         # Verificar instalación
-        if not verificar_instalacion():
-            return
-        
+        instalacion_ok = verificar_instalacion()
+        if not instalacion_ok:
+            print()
+            respuesta = input("¿Deseas continuar de todas formas? (s/N): ").strip().lower()
+            if respuesta != 's':
+                print("\n👋 Corrige los problemas indicados y vuelve a ejecutar el programa.")
+                return
+
         # Mostrar banner
         mostrar_banner()
         time.sleep(2)
