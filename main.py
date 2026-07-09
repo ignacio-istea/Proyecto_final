@@ -122,9 +122,6 @@ def mostrar_banner():
 ║                     SISTEMA DE MONITOREO DISTRIBUIDO                         ║
 ║                   Tecnicatura en Infraestructura - Python                    ║
 ║                                                                              ║
-║  🖥️  Monitoreo remoto SSH    📊 Métricas CPU/Mem/Temp                         ║
-║  🚨 Sistema de alertas       📋 Tablero interactivo                          ║
-║  ⚙️  Umbrales configurables  📈 Reportes detallados                           ║
 ╚══════════════════════════════════════════════════════════════════════════════╝
     """
     print(banner)
