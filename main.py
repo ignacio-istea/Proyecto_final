@@ -121,7 +121,7 @@ def mostrar_banner():
 ╔══════════════════════════════════════════════════════════════════════════════╗
 ║                     SISTEMA DE MONITOREO DISTRIBUIDO                         ║
 ║                   Tecnicatura en Infraestructura - Python                    ║
-║                                                                              ║
+║                          by Ignacio Di Filippo                               ║
 ╚══════════════════════════════════════════════════════════════════════════════╝
     """
     print(banner)
